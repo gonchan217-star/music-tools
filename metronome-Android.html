@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>メトロノーム</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: 1カラムの縦積み。上がメトロノーム、下がテンポ測定。 */
+:root{
+  --bg:#f1f3f7;--fg:#1f2024;--muted:#666a75;--card:#ffffff;--line:#dfe3ec;
+  --accent:#2f6fed;--accent-fg:#ffffff;--stop:#d93025;--dot:#d5d9e3;--chip:#e9effd;--shadow:rgba(20,30,60,.12);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#16181d;--fg:#eceef2;--muted:#9a9ea9;--card:#23262d;--line:#363a44;
+    --accent:#6c9bff;--accent-fg:#101114;--stop:#ff6b60;--dot:#434856;--chip:#2f3750;--shadow:rgba(0,0,0,.5);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#16181d;--fg:#eceef2;--muted:#9a9ea9;--card:#23262d;--line:#363a44;
+  --accent:#6c9bff;--accent-fg:#101114;--stop:#ff6b60;--dot:#434856;--chip:#2f3750;--shadow:rgba(0,0,0,.5);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font:15px/1.55 -apple-system,"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;
+  padding-block:24px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  display:flex;flex-direction:column;align-items:center;gap:16px;
+}
+h1{font-size:22px;line-height:1.3;margin:0}
+h2{font-size:16px;margin:0;align-self:flex-start}
+.card{background:var(--card);border-radius:20px;padding:24px 20px;width:min(100%,360px);box-shadow:0 1px 3px var(--shadow);display:flex;flex-direction:column;align-items:center;gap:16px}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center}
+.hint{font-size:13px;color:var(--muted);margin:0;text-align:center}
+.hint.left{text-align:left;align-self:flex-start}
+#dots{display:flex;gap:10px;height:28px;align-items:center}
+.d{width:20px;height:20px;border-radius:50%;background:var(--dot);transition:transform .08s}
+.d.on{background:var(--accent);transform:scale(1.4)}
+.d.on.first{background:var(--stop)}
+#bpm{width:120px;font-size:44px;font-weight:700;line-height:1.2;font-family:inherit;font-variant-numeric:tabular-nums;text-align:center;border:none;border-bottom:2px solid var(--accent);border-radius:0;background:transparent;color:var(--fg)}
+.pm{width:48px;height:48px;border:none;border-radius:50%;background:var(--bg);color:var(--fg);font-size:26px;cursor:pointer}
+#sl{width:100%;accent-color:var(--accent)}
+.big-btn{width:100%;border:none;border-radius:999px;background:var(--accent);color:var(--accent-fg);font-size:20px;font-weight:700;line-height:1.2;font-family:inherit;padding:16px;cursor:pointer}
+.big-btn.run{background:var(--stop);color:#fff}
+select{font:inherit;font-size:16px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.btn{border:none;border-radius:999px;background:var(--accent);color:var(--accent-fg);font-size:16px;font-weight:600;line-height:1.2;font-family:inherit;padding:12px 22px;cursor:pointer}
+.btn.sub{background:var(--chip);color:var(--fg)}
+.btn:disabled{opacity:.5;cursor:default}
+.pick{position:relative;display:inline-block;text-align:center;overflow:hidden}
+.pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
+.pick.off{opacity:.5;pointer-events:none}
+.pick:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.st{font-size:14px;min-height:21px;text-align:center;margin:0}
+.big{display:flex;align-items:baseline;gap:8px;justify-content:center}
+.big b{font-size:56px;line-height:1.1;font-variant-numeric:tabular-nums}
+.big span{font-size:16px;color:var(--muted)}
+.alts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#res{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+#res[hidden],.mwrap[hidden]{display:none}
+.meter{display:flex;align-items:baseline;gap:8px;justify-content:center}
+.meter b{font-size:28px}
+.mwrap{display:flex;flex-direction:column;align-items:center;gap:12px;width:100%}
+.msg{min-height:20px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.now{margin:0;font-size:15px;font-weight:600;text-align:center;overflow-wrap:anywhere}
+.now small{font-weight:400;color:var(--muted)}
+.src{margin:0;max-width:100%;text-align:center;font-size:14px;overflow-wrap:anywhere}
+.src b{font-weight:600}
+.src small{font-size:12px;color:var(--muted);margin:0 6px}
+.src[hidden]{display:none}
+.card.lib{align-items:stretch}
+.lhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.sync{font-size:12px;color:var(--muted);margin:0}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--bg);color:var(--fg);border-radius:999px;padding:8px 14px;font-family:inherit;font-size:14px;cursor:pointer;max-width:100%;overflow-wrap:anywhere}
+.chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-fg);font-weight:600}
+.chip.ghost{border-style:dashed;background:transparent;color:var(--muted)}
+.panel{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;background:var(--bg)}
+.inl{display:flex;gap:8px}
+input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:16px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.songs{display:flex;flex-direction:column;gap:8px;list-style:none;margin:0;padding:0}
+.srow{display:flex;flex-direction:column;gap:8px}
+.sline{display:flex;gap:8px}
+.load{flex:1;min-width:0;text-align:left;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:12px;padding:10px 12px;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;gap:2px}
+.load.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.load b{font-size:16px;overflow-wrap:anywhere}
+.load span{font-size:13px;color:var(--muted)}
+.more{width:44px;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:12px;font-size:18px;cursor:pointer}
+.sm{border:none;border-radius:999px;background:var(--chip);color:var(--fg);font-family:inherit;font-size:14px;padding:9px 14px;cursor:pointer}
+.sm.danger{color:var(--stop)}
+.sm.armed{background:var(--stop);color:#fff}
+.acts,.step{display:flex;gap:8px;flex-wrap:wrap}
+.step .sm{flex:1}
+.panel[hidden],.step[hidden],.now[hidden]{display:none}
+.fileio summary{cursor:pointer;font-size:14px;color:var(--accent);padding:6px 0}
+.fileio .panel{margin-top:8px}
+.ext{align-self:center;color:var(--muted);font-size:15px}
+@media (prefers-reduced-motion:reduce){.d{transition:none}}
+</style>
+
+<h1>メトロノーム</h1>
+
+<section class="card" aria-label="メトロノーム">
+  <p class="now" id="now" hidden></p>
+  <div id="dots"></div>
+  <p class="src" id="src" hidden></p>
+  <div class="row">
+    <button class="pm" id="m" aria-label="テンポを1下げる">−</button>
+    <input id="bpm" type="number" inputmode="numeric" min="20" max="300" value="120" aria-label="テンポ">
+    <button class="pm" id="p" aria-label="テンポを1上げる">＋</button>
+  </div>
+  <p class="hint">BPM（1分あたりの拍数）</p>
+  <input id="sl" type="range" min="20" max="300" value="120" aria-label="テンポのスライダー">
+  <div class="row">
+    <label for="beats" class="hint">拍子</label>
+    <select id="beats"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select>
+    <span class="hint">拍（1拍目だけ高い音）</span>
+  </div>
+  <button class="big-btn" id="go">スタート</button>
+  <p class="hint msg" id="msg" role="status" aria-live="polite"></p>
+</section>
+
+<section class="card lib" aria-label="曲リスト">
+  <div class="lhead"><h2>曲リスト</h2><p class="sync" id="sync"></p></div>
+  <div class="chips" id="chips"></div>
+  <div id="fpanel"></div>
+  <div class="step" id="stepRow" hidden>
+    <button class="sm" id="prevBtn" type="button">◀ 前の曲</button>
+    <button class="sm" id="nextBtn" type="button">次の曲 ▶</button>
+  </div>
+  <ul class="songs" id="slist"></ul>
+  <p class="hint" id="lempty"></p>
+  <div class="panel" id="saveForm" hidden>
+    <p class="hint left" id="curset"></p>
+    <div class="inl">
+      <input type="text" id="sname" maxlength="40" placeholder="曲名（例：Oh Happy Day）" aria-label="曲名">
+      <button class="sm" id="ssave" type="button">保存</button>
+    </div>
+    <p class="hint left" id="smsg" role="status" aria-live="polite"></p>
+  </div>
+  <details class="fileio">
+    <summary>ファイルに保存・読み込み</summary>
+    <div class="panel">
+      <label class="hint left" for="fscope">保存する内容</label>
+      <select id="fscope">
+        <option value="folder">いま開いているフォルダの曲</option>
+        <option value="all">すべてのフォルダと曲</option>
+        <option value="current">今のテンポと拍子だけ</option>
+      </select>
+      <label class="hint left" for="fname">ファイル名</label>
+      <div class="inl">
+        <input type="text" id="fname" maxlength="60" placeholder="メトロノーム設定">
+        <span class="ext">.json</span>
+      </div>
+      <button class="btn" id="fsave" type="button">ファイルに保存</button>
+      <label class="btn sub pick" id="fload">ファイルから読み込む<input type="file" id="ffile" accept=".json,application/json"></label>
+      <p class="hint left" id="fmsg" role="status" aria-live="polite"></p>
+    </div>
+  </details>
+</section>
+
+<section class="card" aria-label="テンポを測る">
+  <h2>テンポと拍子を測る</h2>
+  <p class="hint left">曲のファイル（mp3・m4a・wavなど）を選ぶと、テンポ（BPM）と拍子を推定します。鼻歌は、ボイスメモなどで録音したファイルを選んでください。「タッ タッ タッ」と区切って歌うと当たりやすくなります。</p>
+  <label class="btn pick" id="pick">ファイルを選ぶ<input type="file" id="file" accept="audio/*"></label>
+  <p class="st" id="st" role="status" aria-live="polite"></p>
+  <div id="res" hidden>
+    <div class="big"><b id="rb">120</b><span>BPM</span></div>
+    <p class="hint" id="rd"></p>
+    <div class="meter"><span class="hint">拍子</span><b id="mb">4拍子</b></div>
+    <p class="hint" id="md"></p>
+    <button class="btn" id="use">メトロノームに設定</button>
+    <p class="hint">テンポが倍や半分に聞こえるときはこちら</p>
+    <div class="alts" id="alts"></div>
+    <div class="mwrap" id="mwrap">
+      <p class="hint">拍子が違うときはこちら</p>
+      <div class="alts" id="malts"></div>
+    </div>
+  </div>
+</section>
+
+<p class="hint">ファイルはこの端末の中で処理され、外には送られません。</p>
+
+<script>
+/* ===== メトロノーム ===== */
+var ac=null,running=false,bpm=120,beats=4,cur=0,nextT=0,timer=null,q=[];
+var bpmEl=document.getElementById('bpm'),sl=document.getElementById('sl'),go=document.getElementById('go'),dots=document.getElementById('dots'),msg=document.getElementById('msg');
+function setBpm(v){v=Math.max(20,Math.min(300,Math.round(+v)||120));bpm=v;bpmEl.value=v;sl.value=v;updateNow()}
+function drawDots(){dots.innerHTML='';for(var i=0;i<beats;i++){var d=document.createElement('div');d.className='d'+(i===0?' first':'');dots.appendChild(d)}}
+function click(t,accent){
+  var o=ac.createOscillator(),g=ac.createGain();
+  o.frequency.value=accent?1600:1000;o.type='square';
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.4,t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+  o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+0.06);
+}
+function sched(){
+  while(nextT<ac.currentTime+0.15){
+    click(nextT,cur===0);q.push({t:nextT,i:cur});
+    nextT+=60/bpm;cur=(cur+1)%beats;
+  }
+}
+function flash(){
+  if(!running)return;
+  while(q.length&&q[0].t<=ac.currentTime){
+    var e=q.shift(),ds=dots.children;
+    for(var k=0;k<ds.length;k++)ds[k].classList.remove('on');
+    if(ds[e.i])ds[e.i].classList.add('on');
+  }
+  requestAnimationFrame(flash);
+}
+function start(){
+  if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();
+  if(ac.resume)ac.resume();
+  running=true;cur=0;q=[];nextT=ac.currentTime+0.08;
+  sched();timer=setInterval(sched,25);flash();
+  go.textContent='ストップ';go.classList.add('run');
+}
+function stop(){
+  running=false;clearInterval(timer);
+  for(var k=0;k<dots.children.length;k++)dots.children[k].classList.remove('on');
+  go.textContent='スタート';go.classList.remove('run');
+}
+go.onclick=function(){running?stop():start()};
+bpmEl.onchange=function(){setBpm(bpmEl.value)};
+bpmEl.oninput=function(){var v=+bpmEl.value;if(v>=20&&v<=300){bpm=v;updateNow()}};
+sl.oninput=function(){setBpm(sl.value)};
+document.getElementById('m').onclick=function(){setBpm(bpm-1)};
+document.getElementById('p').onclick=function(){setBpm(bpm+1)};
+document.getElementById('beats').onchange=function(e){beats=+e.target.value;cur=0;drawDots();updateNow()};
+drawDots();
+
+/* ===== テンポ推定（端末内で計算） ===== */
+/*PURE-START*/
+var FN=1024,HOP=512,WIN=new Float32Array(FN);
+for(var wi=0;wi<FN;wi++)WIN[wi]=0.5-0.5*Math.cos(2*Math.PI*wi/(FN-1));
+
+function fft(re,im){
+  var n=re.length,i,j,k,len,bit;
+  for(i=1,j=0;i<n;i++){
+    bit=n>>1;
+    for(;j&bit;bit>>=1)j^=bit;
+    j^=bit;
+    if(i<j){var t=re[i];re[i]=re[j];re[j]=t;t=im[i];im[i]=im[j];im[j]=t}
+  }
+  for(len=2;len<=n;len<<=1){
+    var ang=-2*Math.PI/len,wr=Math.cos(ang),wim=Math.sin(ang),h=len>>1;
+    for(i=0;i<n;i+=len){
+      var cr=1,ci=0;
+      for(k=0;k<h;k++){
+        var a=i+k,b=a+h;
+        var vr=re[b]*cr-im[b]*ci,vi=re[b]*ci+im[b]*cr;
+        re[b]=re[a]-vr;im[b]=im[a]-vi;re[a]+=vr;im[a]+=vi;
+        var nr=cr*wr-ci*wim;ci=cr*wim+ci*wr;cr=nr;
+      }
+    }
+  }
+}
+
+/* 音の立ち上がりの強さ（スペクトルフラックス）を時間順に並べる */
+async function onsetEnv(x,sr,onProg){
+  var nF=Math.floor((x.length-FN)/HOP)+1;
+  if(nF<300)throw new Error('short');
+  var env=new Float32Array(nF),acc=new Float32Array(nF),prev=new Float32Array(FN/2),prevS=new Float32Array(FN/2),re=new Float32Array(FN),im=new Float32Array(FN);
+  var kmax=Math.min(FN/2-1,Math.floor(8000*FN/sr));
+  for(var f=0;f<nF;f++){
+    var o=f*HOP;
+    for(var i=0;i<FN;i++){re[i]=x[o+i]*WIN[i];im[i]=0}
+    fft(re,im);
+    var s=0,s2=0;
+    for(var k=1;k<=kmax;k++){
+      var mag=Math.sqrt(re[k]*re[k]+im[k]*im[k]);
+      var lg=Math.log(1+10*mag),sq=Math.sqrt(mag);
+      var d=lg-prev[k];if(d>0)s+=d;prev[k]=lg;
+      var d2=sq-prevS[k];if(d2>0)s2+=d2;prevS[k]=sq;
+    }
+    env[f]=s;acc[f]=s2;
+    if(f%500===499){if(onProg)onProg(f/nF);await new Promise(function(r){setTimeout(r,0)})}
+  }
+  /* env: テンポ用（強弱をならした立ち上がり）、acc: 拍子用（強弱の差を残した立ち上がり） */
+  return {env:env,acc:acc};
+}
+
+/* 局所平均を引いて、突出した立ち上がりだけ残す */
+function detrend(env,hopS){
+  var N=env.length,w=Math.max(2,Math.round(0.4/hopS)),pre=new Float64Array(N+1),out=new Float32Array(N),i;
+  for(i=0;i<N;i++)pre[i+1]=pre[i]+env[i];
+  for(i=0;i<N;i++){
+    var a=Math.max(0,i-w),b=Math.min(N,i+w+1),m=(pre[b]-pre[a])/(b-a),v=env[i]-m;
+    out[i]=v>0?v:0;
+  }
+  return out;
+}
+
+/* 周期性（自己相関）が最も強いテンポを探す */
+function estimate(env,hopS){
+  var N=env.length;
+  function acf(L){
+    var Li=Math.floor(L),fr=L-Li,cnt=N-Li-1;
+    if(cnt<100)return 0;
+    var s=0;
+    for(var t=0;t<cnt;t++)s+=env[t]*(env[t+Li]*(1-fr)+env[t+Li+1]*fr);
+    return s/cnt;
+  }
+  var step=0.5,lo=45,hi=220,n=Math.floor((hi-lo)/step)+1,sc=new Float64Array(n),sum=0,bi=0;
+  for(var i=0;i<n;i++){
+    var b=lo+i*step,L=60/(b*hopS);
+    var prior=Math.exp(-0.5*Math.pow(Math.log(b/120)/Math.LN2/0.9,2));
+    sc[i]=(acf(L)+0.5*acf(2*L))*prior;
+    sum+=sc[i];
+    if(sc[i]>sc[bi])bi=i;
+  }
+  var y0=sc[Math.max(0,bi-1)],y1=sc[bi],y2=sc[Math.min(n-1,bi+1)],den=y0-2*y1+y2;
+  var off=den!==0?0.5*(y0-y2)/den:0;
+  if(!isFinite(off)||Math.abs(off)>1)off=0;
+  var best=lo+(bi+off)*step;
+  var alts=[];
+  if(best*2<=240)alts.push(best*2);
+  if(best/2>=40)alts.push(best/2);
+  return {bpm:best,strength:sc[bi]/(sum/n),alts:alts};
+}
+
+/* 推定したテンポの拍に沿って、各拍の強さを順に取り出す */
+function beatSeq(env,acc,bpm,hopS){
+  var N=env.length,P=60/(bpm*hopS),i,ph=0,bestS=-1;
+  var nb=Math.min(40,Math.floor((N-2)/P));
+  if(nb<8)return [];
+  for(var p=0;p<P;p+=0.5){
+    var s=0;
+    for(i=0;i<nb;i++){var c0=Math.round(p+i*P);s+=Math.max(env[c0-1]||0,env[c0]||0,env[c0+1]||0)}
+    if(s>bestS){bestS=s;ph=p}
+  }
+  var a=[],pos=ph,w=Math.max(1,Math.round(P*0.12));
+  while(pos<N-2){
+    var c=Math.round(pos),bi=c,bv=-1;
+    for(var j=c-w;j<=c+w;j++){if(j>=0&&j<N&&env[j]>bv){bv=env[j];bi=j}}
+    a.push((acc[bi-1]||0)+(acc[bi]||0)+(acc[bi+1]||0));
+    pos+=0.4*(bi-pos)+P;
+  }
+  return a;
+}
+
+/* 強い拍が何拍ごとに繰り返されるかで拍子を決める */
+function pickMeter(a){
+  var n=a.length,i;
+  if(n<40)return null;
+  var mu=0;for(i=0;i<n;i++)mu+=a[i];mu/=n;
+  var v=0;for(i=0;i<n;i++)v+=(a[i]-mu)*(a[i]-mu);
+  if(v<=0)return null;
+  function r(m){var s=0,c=0;for(var k=0;k+m<n;k++){s+=(a[k]-mu)*(a[k+m]-mu);c++}return c>0?(s/c)/(v/n):0}
+  var maxLag=Math.min(24,Math.floor(n/3)),R={},k;
+  for(k=2;k<=maxLag;k++)R[k]=r(k);
+  /* 2・3・4・6拍子それぞれについて、その周期と倍の周期の繰り返しの強さを平均する */
+  var cand=[2,3,4,6],bonus={2:0,3:0.04,4:0.06,6:0},raw={},sc={};
+  cand.forEach(function(m){
+    var s=0,c=0;
+    for(var j=1;j*m<=maxLag;j++){s+=R[j*m];c++}
+    raw[m]=c?s/c:-1;sc[m]=raw[m]+bonus[m];
+  });
+  var order=cand.slice().sort(function(x,y){return sc[y]-sc[x]});
+  return {beats:order[0],alts:[order[1],order[2]],best:raw[order[0]],margin:sc[order[0]]-sc[order[1]],R:R};
+}
+/*PURE-END*/
+
+/* ===== 画面まわり ===== */
+var fileEl=document.getElementById('file'),pick=document.getElementById('pick'),st=document.getElementById('st'),res=document.getElementById('res');
+var rb=document.getElementById('rb'),rd=document.getElementById('rd'),useBtn=document.getElementById('use'),altsEl=document.getElementById('alts');
+var mb=document.getElementById('mb'),md=document.getElementById('md'),mwrap=document.getElementById('mwrap'),maltsEl=document.getElementById('malts'),beatsEl=document.getElementById('beats');
+var found=0,foundBeats=0,foundName='',busy=false;
+var srcEl=document.getElementById('src'),tempoSrc=null;
+/* ファイルからテンポを設定したとき、そのファイル名をテンポの上に出す */
+function markSrc(name){tempoSrc={name:name,bpm:bpm,beats:beats};updateNow()}
+
+function applyBpm(v){
+  setBpm(v);markSrc(foundName);
+  msg.textContent='メトロノームを '+bpm+' BPM に設定しました';
+  try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
+}
+function setBeats(m){beats=m;beatsEl.value=String(m);cur=0;drawDots();updateNow()}
+function toTop(){try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}}
+function applyAll(){
+  setBpm(found);
+  if(foundBeats)setBeats(foundBeats);
+  markSrc(foundName);
+  msg.textContent='メトロノームを '+bpm+' BPM'+(foundBeats?'・'+foundBeats+'拍子':'')+' に設定しました';
+  toTop();
+}
+function meterLabel(s){return s>=0.5?'はっきり':s>=0.2?'ふつう':'あいまい'}
+function decodeFile(buf){
+  var AC=window.AudioContext||window.webkitAudioContext,c=new AC();
+  return new Promise(function(ok,ng){
+    var p=c.decodeAudioData(buf,ok,ng);
+    if(p&&p.then)p.then(ok,ng);
+  }).then(function(a){if(c.close)c.close();return a},function(e){if(c.close)c.close();throw e});
+}
+function fmtSec(s){var m=Math.floor(s/60),r=Math.round(s%60);return m>0?m+'分'+r+'秒':r+'秒'}
+function strengthLabel(s){return s>=3?'はっきり':s>=1.8?'ふつう':'あいまい'}
+
+async function analyze(file){
+  setBusy(true);res.hidden=true;
+  try{
+    if(file.size>120*1024*1024)throw new Error('big');
+    st.textContent='読み込み中…';
+    var buf=await file.arrayBuffer();
+    st.textContent='音声を変換中…';
+    var a=await decodeFile(buf);
+    var sr=a.sampleRate,total=a.length,maxLen=Math.floor(90*sr),segLen=Math.min(total,maxLen),start=Math.floor((total-segLen)/2);
+    var x=new Float32Array(segLen),nc=a.numberOfChannels;
+    for(var c=0;c<nc;c++){var d=a.getChannelData(c);for(var i=0;i<segLen;i++)x[i]+=d[start+i]/nc}
+    st.textContent='テンポを分析中… 0%';
+    var oe=await onsetEnv(x,sr,function(p){st.textContent='テンポを分析中… '+Math.round(p*100)+'%'});
+    var hopS=HOP/sr;
+    var de=detrend(oe.env,hopS);
+    var r=estimate(de,hopS);
+    var mt=pickMeter(beatSeq(de,detrend(oe.acc,hopS),r.bpm,hopS));
+    found=r.bpm;foundName=file.name||'';
+    rb.textContent=Math.round(r.bpm);
+    var dur=a.duration;
+    rd.textContent='正確には約'+r.bpm.toFixed(1)+' BPM ／ 拍のはっきり度：'+strengthLabel(r.strength)+'（'+(total>segLen?'曲の中央付近の約90秒':'全体の'+fmtSec(dur))+'を分析）';
+    altsEl.innerHTML='';
+    r.alts.forEach(function(v){
+      var b=document.createElement('button');
+      b.className='btn sub';b.textContent=Math.round(v)+' BPM';
+      b.onclick=function(){applyBpm(v)};
+      altsEl.appendChild(b);
+    });
+    foundBeats=mt?mt.beats:0;
+    mb.textContent=mt?mt.beats+'拍子':'不明';
+    md.textContent=mt?'拍子の確かさ：'+meterLabel(mt.best)+'（2・3・4・6拍子から推定）':'拍の数が少なく、拍子は判定できませんでした。';
+    maltsEl.innerHTML='';
+    if(mt)mt.alts.forEach(function(m){
+      var b=document.createElement('button');
+      b.className='btn sub';b.textContent=m+'拍子';
+      b.onclick=function(){if(tempoSrc)tempoSrc.beats=m;setBeats(m);msg.textContent='拍子を '+m+'拍子 に設定しました';toTop()};
+      maltsEl.appendChild(b);
+    });
+    mwrap.hidden=!mt;
+    res.hidden=false;st.textContent='';
+  }catch(e){
+    var m=String(e&&e.message||e);
+    st.textContent=m==='short'?'音声が短すぎて測れませんでした。10秒以上のファイルを選んでください。'
+      :m==='big'?'ファイルが大きすぎます（120MBまで）。'
+      :'このファイルは読み込めませんでした。mp3、m4a、wavなどを試してください。';
+  }
+  setBusy(false);
+}
+function setBusy(b){busy=b;fileEl.disabled=b;pick.classList.toggle('off',b)}
+fileEl.onchange=function(){var f=fileEl.files&&fileEl.files[0];if(f)analyze(f);fileEl.value=''};
+useBtn.onclick=applyAll;
+
+/* ===== 曲リスト（フォルダ＝コンサートごと、曲＝名前つきの設定） ===== */
+/*LIB-START*/
+function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function emptyLib(){return {v:1,folders:[],songs:[]}}
+function cleanName(s,max){return String(s==null?'':s).replace(/\s+/g,' ').trim().slice(0,max)}
+function normalize(d){
+  var out=emptyLib(),ids={};
+  if(!d||typeof d!=='object')return out;
+  (Array.isArray(d.folders)?d.folders:[]).forEach(function(f){
+    if(f&&typeof f.id==='string'&&typeof f.name==='string'){out.folders.push({id:f.id,name:cleanName(f.name,30)});ids[f.id]=1}
+  });
+  (Array.isArray(d.songs)?d.songs:[]).forEach(function(s){
+    if(s&&typeof s.id==='string'&&typeof s.name==='string'&&ids[s.folder]){
+      out.songs.push({id:s.id,folder:s.folder,name:cleanName(s.name,40),bpm:Math.max(20,Math.min(300,Math.round(+s.bpm)||120)),beats:Math.max(1,Math.min(7,Math.round(+s.beats)||4))});
+    }
+  });
+  return out;
+}
+function songsIn(lib,fid){return lib.songs.filter(function(s){return s.folder===fid})}
+function findSong(lib,id){for(var i=0;i<lib.songs.length;i++)if(lib.songs[i].id===id)return lib.songs[i];return null}
+function addFolder(lib,name){name=cleanName(name,30);if(!name)return null;var f={id:newId(),name:name};lib.folders.push(f);return f}
+function renameFolder(lib,id,name){
+  name=cleanName(name,30);if(!name)return false;
+  for(var i=0;i<lib.folders.length;i++)if(lib.folders[i].id===id){lib.folders[i].name=name;return true}
+  return false;
+}
+function deleteFolder(lib,id){
+  lib.folders=lib.folders.filter(function(f){return f.id!==id});
+  lib.songs=lib.songs.filter(function(s){return s.folder!==id});
+}
+function addSong(lib,fid,name,bpm,beats){
+  name=cleanName(name,40);
+  if(!name||!lib.folders.some(function(f){return f.id===fid}))return null;
+  var s={id:newId(),folder:fid,name:name,bpm:bpm,beats:beats};
+  lib.songs.push(s);return s;
+}
+function renameSong(lib,id,name){var s=findSong(lib,id);name=cleanName(name,40);if(!s||!name)return false;s.name=name;return true}
+function overwriteSong(lib,id,bpm,beats){var s=findSong(lib,id);if(!s)return false;s.bpm=bpm;s.beats=beats;return true}
+function deleteSong(lib,id){lib.songs=lib.songs.filter(function(s){return s.id!==id})}
+function moveSong(lib,id,dir){
+  var s=findSong(lib,id);if(!s)return false;
+  var list=songsIn(lib,s.folder),i=list.indexOf(s),j=i+dir;
+  if(j<0||j>=list.length)return false;
+  var a=lib.songs.indexOf(list[i]),b=lib.songs.indexOf(list[j]),t=lib.songs[a];
+  lib.songs[a]=lib.songs[b];lib.songs[b]=t;return true;
+}
+
+/* ファイルへの書き出し・読み込み */
+function safeFileName(s){
+  s=String(s==null?'':s).replace(/[\\\/:*?"<>|\u0000-\u001f]/g,'').replace(/\s+/g,' ').trim().replace(/^\.+/,'').replace(/\.json$/i,'').trim().slice(0,60);
+  if(!s)s='メトロノーム設定';
+  return s+'.json';
+}
+function buildExport(lib,scope,fid,bpm,beats){
+  var o={app:'metronome',v:1,current:{bpm:bpm,beats:beats},folders:[],songs:[]};
+  if(scope==='all'){o.folders=JSON.parse(JSON.stringify(lib.folders));o.songs=JSON.parse(JSON.stringify(lib.songs))}
+  else if(scope==='folder'){
+    var f=lib.folders.filter(function(x){return x.id===fid})[0];
+    if(f){o.folders=[{id:f.id,name:f.name}];o.songs=JSON.parse(JSON.stringify(songsIn(lib,f.id)))}
+  }
+  return o;
+}
+/* 同じ名前のフォルダには足し、同じ曲（名前・テンポ・拍子が同じ）は重ねない */
+function mergeImport(lib,raw){
+  if(!raw||typeof raw!=='object'||raw.app!=='metronome')return null;
+  var n=normalize(raw),map={},res={folders:0,songs:0,current:null,hasLibrary:n.folders.length>0};
+  n.folders.forEach(function(f){
+    var ex=lib.folders.filter(function(x){return x.name===f.name})[0];
+    if(ex)map[f.id]=ex.id;else{map[f.id]=addFolder(lib,f.name).id;res.folders++}
+  });
+  n.songs.forEach(function(s){
+    var fid=map[s.folder];
+    var dup=lib.songs.some(function(x){return x.folder===fid&&x.name===s.name&&x.bpm===s.bpm&&x.beats===s.beats});
+    if(!dup){lib.songs.push({id:newId(),folder:fid,name:s.name,bpm:s.bpm,beats:s.beats});res.songs++}
+  });
+  if(raw.current&&isFinite(+raw.current.bpm)&&isFinite(+raw.current.beats)){
+    res.current={bpm:Math.max(20,Math.min(300,Math.round(+raw.current.bpm))),beats:Math.max(1,Math.min(7,Math.round(+raw.current.beats)))};
+  }
+  return res;
+}
+/*LIB-END*/
+
+var nowEl=document.getElementById('now'),curSet=document.getElementById('curset'),chipsEl=document.getElementById('chips'),fpanel=document.getElementById('fpanel'),stepRow=document.getElementById('stepRow');
+var slist=document.getElementById('slist'),lempty=document.getElementById('lempty'),saveForm=document.getElementById('saveForm'),snameEl=document.getElementById('sname'),smsg=document.getElementById('smsg'),syncEl=document.getElementById('sync');
+var lib=emptyLib(),ui={folder:null,panel:null,openSong:null,armed:null,song:null};
+var KEY_LIB='metro-lib-v1',KEY_UI='metro-ui-v1';
+var cloud={doc:null,writing:false,dirty:false,timer:null,synced:false};
+
+function el(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=text;return e}
+function curFolder(){for(var i=0;i<lib.folders.length;i++)if(lib.folders[i].id===ui.folder)return lib.folders[i];return null}
+function fixUi(){
+  if(!curFolder())ui.folder=lib.folders.length?lib.folders[0].id:null;
+  if(ui.song&&!findSong(lib,ui.song))ui.song=null;
+  if(ui.openSong&&!findSong(lib,ui.openSong))ui.openSong=null;
+}
+function readLocal(){
+  try{
+    var t=localStorage.getItem(KEY_LIB);if(t)lib=normalize(JSON.parse(t));
+    var u=localStorage.getItem(KEY_UI);if(u){var o=JSON.parse(u);if(o&&typeof o.folder==='string')ui.folder=o.folder}
+  }catch(e){}
+}
+function writeLocal(){try{localStorage.setItem(KEY_LIB,JSON.stringify(lib));localStorage.setItem(KEY_UI,JSON.stringify({folder:ui.folder}))}catch(e){}}
+
+/* 保存先：アカウント（他の端末でも使える）。使えないときはこの端末のブラウザ */
+function setSync(k){
+  syncEl.textContent={conn:'アカウントに接続中…',cloud:'保存先：アカウント（他の端末でも使えます）',local:'保存先：この端末のみ',slow:'接続に時間がかかっています。この端末には保存されます',err:'アカウントに保存できませんでした。この端末には保存されています'}[k]||'';
+}
+function changed(){
+  writeLocal();
+  if(!cloud.doc)return;
+  cloud.dirty=true;clearTimeout(cloud.timer);cloud.timer=setTimeout(flush,300);
+}
+async function flush(){
+  if(cloud.writing||!cloud.dirty||!cloud.doc||!cloud.synced)return;
+  cloud.writing=true;cloud.dirty=false;
+  try{await cloud.doc.set(JSON.parse(JSON.stringify({v:1,folders:lib.folders,songs:lib.songs})));setSync('cloud')}
+  catch(e){setSync('err')}
+  cloud.writing=false;
+  if(cloud.dirty)flush();
+}
+async function initCloud(){
+  setSync('local');
+  try{
+    if(!window.claude||!window.claude.use)return;
+    var db=await window.claude.use('db'),user=await window.claude.use('user');
+    var id=user?await user.id():null;
+    if(!db||!id)return;
+    cloud.doc=db.collection('data/users/'+id).doc('library');
+    setSync('conn');
+    var t10=setTimeout(function(){if(!cloud.synced)setSync('slow')},10000);
+    cloud.doc.onSnapshot(function(snap){
+      if(snap.metadata&&snap.metadata.hasPendingWrites)return;
+      var definitive=!(snap.metadata&&snap.metadata.fromCache);
+      if(snap.exists){
+        var d=normalize(snap.data());
+        if(definitive){cloud.synced=true;cloud.dirty=false;clearTimeout(t10);setSync('cloud')}
+        if(JSON.stringify(d)!==JSON.stringify(lib)){lib=d;fixUi();writeLocal();renderAll()}
+      }else if(definitive){
+        cloud.synced=true;clearTimeout(t10);setSync('cloud');
+        if(lib.folders.length){cloud.dirty=true;flush()}
+      }
+    },function(){setSync('err')});
+  }catch(e){cloud.doc=null;setSync('local')}
+}
+
+/* 2回押して削除（押し間違い防止） */
+function arm(key,rerender){
+  ui.armed=key;rerender();clearTimeout(arm.t);
+  arm.t=setTimeout(function(){if(ui.armed===key){ui.armed=null;rerender()}},4000);
+}
+
+function updateNow(){
+  if(!nowEl)return;
+  curSet.textContent='今の設定：'+bpm+' BPM・'+beats+'拍子';
+  refreshFname();
+  if(srcEl){
+    if(!tempoSrc||!tempoSrc.name)srcEl.hidden=true;
+    else{
+      srcEl.hidden=false;srcEl.textContent='';
+      srcEl.appendChild(el('small',null,'ファイル'));
+      srcEl.appendChild(el('b',null,tempoSrc.name));
+      if(tempoSrc.bpm!==bpm||tempoSrc.beats!==beats)srcEl.appendChild(el('small',null,'（手動で変更中）'));
+    }
+  }
+  var s=ui.song?findSong(lib,ui.song):null;
+  if(!s){nowEl.hidden=true;return}
+  nowEl.hidden=false;nowEl.textContent=s.name;
+  if(s.bpm!==bpm||s.beats!==beats){nowEl.appendChild(document.createTextNode(' '));nowEl.appendChild(el('small',null,'（保存した設定から変更中）'))}
+}
+function loadSong(s){
+  ui.song=s.id;tempoSrc=null;setBpm(s.bpm);setBeats(s.beats);
+  msg.textContent='「'+s.name+'」を呼び出しました（'+s.bpm+' BPM・'+s.beats+'拍子）';
+  updateNow();renderSongs();
+}
+function stepSong(dir){
+  var f=curFolder();if(!f)return;
+  var list=songsIn(lib,f.id);if(!list.length)return;
+  var i=-1;for(var k=0;k<list.length;k++)if(list[k].id===ui.song)i=k;
+  var j=i<0?(dir>0?0:list.length-1):(i+dir+list.length)%list.length;
+  loadSong(list[j]);
+}
+
+function renderChips(){
+  chipsEl.innerHTML='';
+  lib.folders.forEach(function(f){
+    var b=el('button','chip'+(f.id===ui.folder?' on':''),f.name);b.type='button';
+    b.onclick=function(){ui.folder=f.id;ui.panel=null;ui.openSong=null;ui.armed=null;writeLocal();renderAll()};
+    chipsEl.appendChild(b);
+  });
+  if(lib.folders.length){
+    var add=el('button','chip ghost','＋ フォルダ');add.type='button';
+    add.onclick=function(){ui.panel=ui.panel==='add'?null:'add';renderFpanel()};
+    chipsEl.appendChild(add);
+    var ed=el('button','chip ghost','⚙ フォルダ設定');ed.type='button';
+    ed.onclick=function(){ui.panel=ui.panel==='edit'?null:'edit';ui.armed=null;renderFpanel()};
+    chipsEl.appendChild(ed);
+  }
+}
+function renderFpanel(){
+  fpanel.innerHTML='';
+  var f=curFolder(),mode=lib.folders.length?ui.panel:'add';
+  if(mode==='add'){
+    var p=el('div','panel');
+    if(!lib.folders.length)p.appendChild(el('p','hint left','まず、コンサートなどのフォルダを作りましょう。曲はフォルダごとに並べて保存できます。'));
+    var row=el('div','inl'),inp=el('input');
+    inp.type='text';inp.id='fnew';inp.maxLength=30;inp.placeholder='フォルダ名（例：クリスマス演奏会）';inp.setAttribute('aria-label','新しいフォルダ名');
+    var ok=el('button','sm','作成');ok.type='button';
+    var go=function(){var nf=addFolder(lib,inp.value);if(!nf)return;ui.folder=nf.id;ui.panel=null;ui.song=null;changed();renderAll()};
+    ok.onclick=go;inp.onkeydown=function(e){if(e.key==='Enter')go()};
+    row.appendChild(inp);row.appendChild(ok);p.appendChild(row);fpanel.appendChild(p);
+  }else if(mode==='edit'&&f){
+    var p2=el('div','panel'),row2=el('div','inl'),inp2=el('input');
+    inp2.type='text';inp2.id='fedit';inp2.maxLength=30;inp2.value=f.name;inp2.setAttribute('aria-label','フォルダ名');
+    var rn=el('button','sm','名前を変更');rn.type='button';
+    rn.onclick=function(){if(renameFolder(lib,f.id,inp2.value)){ui.panel=null;changed();renderAll()}};
+    row2.appendChild(inp2);row2.appendChild(rn);p2.appendChild(row2);
+    var n=songsIn(lib,f.id).length,key='f:'+f.id,armed=ui.armed===key;
+    var del=el('button','sm danger'+(armed?' armed':''),armed?'もう一度押すと、曲'+n+'件ごと削除します':'このフォルダを削除（曲'+n+'件）');
+    del.type='button';
+    del.onclick=function(){
+      if(ui.armed===key){deleteFolder(lib,f.id);ui.armed=null;ui.panel=null;fixUi();changed();renderAll()}
+      else arm(key,renderFpanel);
+    };
+    p2.appendChild(del);fpanel.appendChild(p2);
+  }
+}
+function renderSongs(){
+  slist.innerHTML='';
+  var f=curFolder(),list=f?songsIn(lib,f.id):[];
+  stepRow.hidden=list.length<2;
+  lempty.textContent=f&&!list.length?'まだ曲がありません。上のメトロノームを設定して、下で曲名をつけて保存しましょう。':'';
+  list.forEach(function(s,i){
+    var li=el('li','srow'),line=el('div','sline');
+    var ld=el('button','load'+(s.id===ui.song?' on':''));ld.type='button';
+    ld.appendChild(el('b',null,(i+1)+'. '+s.name));
+    ld.appendChild(el('span',null,s.bpm+' BPM・'+s.beats+'拍子'));
+    ld.onclick=function(){loadSong(s)};
+    var mo=el('button','more','⋯');mo.type='button';mo.setAttribute('aria-label',s.name+'を編集');
+    mo.onclick=function(){ui.openSong=ui.openSong===s.id?null:s.id;ui.armed=null;renderSongs()};
+    line.appendChild(ld);line.appendChild(mo);li.appendChild(line);
+    if(ui.openSong===s.id){
+      var p=el('div','panel'),row=el('div','inl'),inp=el('input');
+      inp.type='text';inp.id='sedit-'+s.id;inp.maxLength=40;inp.value=s.name;inp.setAttribute('aria-label','曲名');
+      var rn=el('button','sm','名前を変更');rn.type='button';
+      rn.onclick=function(){if(renameSong(lib,s.id,inp.value)){changed();renderSongs();updateNow()}};
+      row.appendChild(inp);row.appendChild(rn);p.appendChild(row);
+      var acts=el('div','acts');
+      var ow=el('button','sm','今のテンポ・拍子で上書き');ow.type='button';
+      ow.onclick=function(){overwriteSong(lib,s.id,bpm,beats);changed();renderSongs();updateNow();smsg.textContent='「'+s.name+'」を '+bpm+' BPM・'+beats+'拍子 に更新しました'};
+      var up=el('button','sm','↑ 上へ'),dn=el('button','sm','↓ 下へ');up.type='button';dn.type='button';
+      up.onclick=function(){if(moveSong(lib,s.id,-1)){changed();renderSongs()}};
+      dn.onclick=function(){if(moveSong(lib,s.id,1)){changed();renderSongs()}};
+      var key='s:'+s.id,armed=ui.armed===key;
+      var del=el('button','sm danger'+(armed?' armed':''),armed?'もう一度押すと削除':'削除');del.type='button';
+      del.onclick=function(){
+        if(ui.armed===key){deleteSong(lib,s.id);ui.armed=null;ui.openSong=null;fixUi();changed();renderSongs();updateNow()}
+        else arm(key,renderSongs);
+      };
+      acts.appendChild(ow);acts.appendChild(up);acts.appendChild(dn);acts.appendChild(del);p.appendChild(acts);li.appendChild(p);
+    }
+    slist.appendChild(li);
+  });
+}
+function renderAll(){
+  renderChips();renderFpanel();renderSongs();
+  saveForm.hidden=!curFolder();
+  updateNow();
+}
+
+function saveCurrent(){
+  var f=curFolder();if(!f)return;
+  var s=addSong(lib,f.id,snameEl.value,bpm,beats);
+  if(!s){smsg.textContent='曲名を入れてください';return}
+  snameEl.value='';ui.song=s.id;
+  smsg.textContent='「'+s.name+'」を '+s.bpm+' BPM・'+s.beats+'拍子 で保存しました';
+  changed();renderSongs();updateNow();
+}
+document.getElementById('ssave').onclick=saveCurrent;
+snameEl.onkeydown=function(e){if(e.key==='Enter')saveCurrent()};
+document.getElementById('prevBtn').onclick=function(){stepSong(-1)};
+document.getElementById('nextBtn').onclick=function(){stepSong(1)};
+
+/* ファイルに保存・読み込み */
+var fscope=document.getElementById('fscope'),fnameEl=document.getElementById('fname'),fmsg=document.getElementById('fmsg'),ffile=document.getElementById('ffile');
+function defaultName(){
+  var sc=fscope.value,f=curFolder();
+  return sc==='folder'&&f?f.name:sc==='current'?'メトロノーム '+bpm+'BPM '+beats+'拍子':'メトロノーム設定';
+}
+function refreshFname(){if(fnameEl)fnameEl.placeholder=defaultName()}
+fscope.onchange=refreshFname;
+
+async function saveToFile(){
+  var sc=fscope.value,f=curFolder();
+  if(sc==='folder'&&!f){fmsg.textContent='先にフォルダを作ってください';return}
+  var text=JSON.stringify(buildExport(lib,sc,f?f.id:null,bpm,beats),null,2);
+  var fn=safeFileName(fnameEl.value||defaultName());
+  fmsg.textContent='';
+  try{
+    var dl=null;
+    try{dl=window.claude&&window.claude.use?await window.claude.use('downloads'):null}catch(e){}
+    if(dl){
+      await dl.save({filename:fn,data:text});
+      fmsg.textContent='「'+fn+'」を保存しました';
+    }else{
+      var url=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+      var a=document.createElement('a');a.href=url;a.download=fn;document.body.appendChild(a);a.click();
+      setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url)},1000);
+      fmsg.textContent='「'+fn+'」をダウンロードしました。ダウンロードフォルダを確認してください';
+    }
+  }catch(e){
+    fmsg.textContent=e&&e.code==='declined'?'保存をキャンセルしました':'保存できませんでした。もう一度お試しください';
+  }
+}
+document.getElementById('fsave').onclick=saveToFile;
+
+function readFileText(f){
+  return new Promise(function(ok,ng){
+    var r=new FileReader();r.onload=function(){ok(String(r.result))};r.onerror=function(){ng(r.error)};r.readAsText(f);
+  });
+}
+ffile.onchange=async function(){
+  var f=ffile.files&&ffile.files[0];
+  if(!f)return;
+  try{
+    if(f.size>5*1024*1024)throw new Error('big');
+    var raw=JSON.parse(await readFileText(f));
+    var r=mergeImport(lib,raw);
+    if(!r){fmsg.textContent='このアプリで書き出したファイルではありません';return}
+    if(!r.hasLibrary&&r.current){
+      setBpm(r.current.bpm);setBeats(r.current.beats);markSrc(f.name);
+      fmsg.textContent='テンポと拍子（'+bpm+' BPM・'+beats+'拍子）を読み込みました';
+      return;
+    }
+    if(r.folders||r.songs){
+      fixUi();changed();renderAll();
+      fmsg.textContent='フォルダ'+r.folders+'件、曲'+r.songs+'件を取り込みました';
+    }else{
+      fmsg.textContent='新しく取り込む曲はありませんでした（すべて登録済みです）';
+    }
+  }catch(e){
+    fmsg.textContent='読み込めませんでした。このアプリで書き出した .json ファイルを選んでください';
+  }finally{ffile.value=''}
+};
+
+readLocal();fixUi();renderAll();initCloud();
+</script>
+
+</html>
