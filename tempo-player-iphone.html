@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="テンポプレーヤー">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="format-detection" content="telephone=no">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}[hidden]{display:none!important}</style>
+<title>テンポプレーヤー</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--fg:#1d1b18;--mute:#6f6a62;--line:#e2ddd3;--accent:#b4472b;--accent-fg:#fff;--soft:#f0e3dc;--track:#ddd6ca}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171513;--card:#211e1b;--fg:#f1ede6;--mute:#a09a90;--line:#38332d;--accent:#e0694a;--accent-fg:#1a0e09;--soft:#3a2a23;--track:#403a33;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#171513;--card:#211e1b;--fg:#f1ede6;--mute:#a09a90;--line:#38332d;--accent:#e0694a;--accent-fg:#1a0e09;--soft:#3a2a23;--track:#403a33;color-scheme:dark}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--fg);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",system-ui,sans-serif;font-size:16px;line-height:1.5;
+ padding-block:20px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:520px;margin:0 auto}
+h1{font-size:22px;margin:0 0 14px;letter-spacing:.02em}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+button,.pick{font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;min-height:44px;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+button:active,.pick:active{transform:scale(.97)}
+button.pri{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:700}
+button:disabled{opacity:.45;cursor:default}
+.pick{display:block;position:relative;text-align:center;font-weight:600;overflow:hidden}
+.pick input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0}
+#name{margin:10px 0 0;font-weight:700;overflow-wrap:anywhere;min-height:1.5em}
+#name.none{color:var(--mute);font-weight:400}
+.time{display:flex;justify-content:space-between;font-variant-numeric:tabular-nums;color:var(--mute);font-size:14px;margin-top:2px}
+input[type=range]{width:100%;margin:10px 0;accent-color:var(--accent);height:32px;touch-action:manipulation}
+.ctrl{display:grid;grid-template-columns:1fr 1.6fr 1fr;gap:10px;margin-top:6px}
+.big{text-align:center;font-size:56px;font-weight:800;line-height:1.1;font-variant-numeric:tabular-nums}
+.big small{font-size:22px;font-weight:600;margin-left:2px}
+.bpmline{text-align:center;color:var(--mute);min-height:1.5em;margin-bottom:4px}
+.bpmline b{color:var(--fg)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>button{flex:1 1 0;min-width:56px;padding-inline:8px}
+.presets button{font-size:14px}
+.presets button.on{background:var(--soft);border-color:var(--accent)}
+h2{font-size:15px;margin:0 0 10px;color:var(--mute);letter-spacing:.06em}
+.ab{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.ab button.on{background:var(--soft);border-color:var(--accent)}
+.abinfo{margin:10px 0 0;color:var(--mute);font-size:14px;font-variant-numeric:tabular-nums}
+.orig{display:flex;align-items:center;gap:10px;margin-top:12px;color:var(--mute);font-size:14px}
+.orig input{width:90px;font:inherit;font-size:16px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;min-height:40px}
+#msg{min-height:1.4em;color:var(--mute);font-size:14px;margin:8px 0 0}
+.note{color:var(--mute);font-size:13px;line-height:1.6}
+</style>
+
+<div class="wrap">
+</head>
+<body>
+<h1>テンポプレーヤー</h1>
+
+<div class="card">
+  <label class="pick" id="pick">音楽ファイルを選ぶ（mp3 など）<input type="file" id="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac"></label>
+  <p id="name" class="none">まだ選んでいません</p>
+  <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="再生位置" disabled>
+  <div class="time"><span id="cur">0:00</span><span id="dur">0:00</span></div>
+  <div class="ctrl">
+    <button id="back" disabled>−5秒</button>
+    <button id="play" class="pri" disabled>再生</button>
+    <button id="fwd" disabled>+5秒</button>
+  </div>
+  <p id="msg"></p>
+</div>
+
+<div class="card">
+  <h2>テンポ（再生速度）</h2>
+  <div class="big"><span id="pct">100</span><small>%</small></div>
+  <div class="bpmline" id="bpmline"></div>
+  <input type="range" id="rate" min="50" max="150" value="100" step="1" aria-label="テンポ">
+  <div class="row" style="margin-bottom:8px">
+    <button data-d="-5">−5</button><button data-d="-1">−1</button><button data-d="1">+1</button><button data-d="5">+5</button>
+  </div>
+  <div class="row presets" id="presets">
+    <button data-v="60">60%</button><button data-v="70">70%</button><button data-v="80">80%</button><button data-v="90">90%</button><button data-v="100">100%</button>
+  </div>
+  <div class="orig"><label for="orig">元のテンポ</label><input type="number" id="orig" inputmode="decimal" min="20" max="300" placeholder="例 120"><span>BPM（入れると今のBPMを表示）</span></div>
+</div>
+
+<div class="card">
+  <h2>区間くり返し</h2>
+  <div class="ab">
+    <button id="aBtn" disabled>A 始点</button>
+    <button id="bBtn" disabled>B 終点</button>
+    <button id="cBtn" disabled>解除</button>
+  </div>
+  <p class="abinfo" id="abinfo">再生しながら、くり返したい場所の始めで「A」、終わりで「B」を押します。</p>
+</div>
+
+<p class="note">音の高さは変えずに、速さだけを変えます。再生中でもスライダーを動かせます。ファイルは端末の中だけで再生し、どこにも送信しません。</p>
+</div>
+
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)};
+var a=new Audio();a.preload='auto';a.setAttribute('playsinline','');
+function keepPitch(){try{a.preservesPitch=true}catch(e){}try{a.webkitPreservesPitch=true}catch(e){}try{a.mozPreservesPitch=true}catch(e){}}
+keepPitch();
+var url=null,rate=100,A=null,B=null,loopOn=false,dragging=false,loaded=false;
+var seek=$('seek'),playB=$('play'),msg=$('msg');
+
+function fmt(t){if(!isFinite(t)||t<0)t=0;var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
+function fmtd(t){var m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1)}
+function say(t){msg.textContent=t||''}
+function clamp(v,lo,hi){return Math.min(hi,Math.max(lo,v))}
+
+function setRate(p,fromUI){
+  rate=clamp(Math.round(p),50,150);
+  var r=rate/100;
+  try{a.defaultPlaybackRate=r}catch(e){}
+  try{a.playbackRate=r}catch(e){}
+  keepPitch();
+  $('pct').textContent=rate;
+  $('rate').value=rate;
+  var ps=document.querySelectorAll('#presets button');
+  for(var i=0;i<ps.length;i++)ps[i].classList.toggle('on',+ps[i].dataset.v===rate);
+  showBpm();
+  try{localStorage.setItem('tempo-player-v1',JSON.stringify({rate:rate,orig:$('orig').value}))}catch(e){}
+}
+function showBpm(){
+  var o=parseFloat($('orig').value),el=$('bpmline');
+  if(o>=20&&o<=300){el.innerHTML='今のテンポ <b>'+Math.round(o*rate/100)+' BPM</b>（元 '+o+'）'}else{el.textContent=''}
+}
+
+function enable(on){
+  ['seek','play','back','fwd','aBtn','bBtn','cBtn'].forEach(function(id){$(id).disabled=!on});
+}
+function loadFile(f){
+  if(!f)return;
+  if(url){try{URL.revokeObjectURL(url)}catch(e){}}
+  a.pause();A=B=null;loopOn=false;loaded=false;
+  url=URL.createObjectURL(f);
+  a.src=url;try{a.load()}catch(e){}
+  setRate(rate);
+  $('name').textContent=f.name;$('name').className='';setupMedia(f.name);
+  playB.textContent='再生';
+  say('読み込み中…');
+  abShow();
+}
+a.addEventListener('loadedmetadata',function(){loaded=true;enable(true);$('dur').textContent=fmt(a.duration);say('');setRate(rate);draw()});
+a.addEventListener('error',function(){loaded=false;enable(false);say('この形式は再生できませんでした。mp3 / m4a / wav などを選んでください。')});
+a.addEventListener('play',function(){playB.textContent='一時停止'});
+a.addEventListener('pause',function(){playB.textContent='再生'});
+a.addEventListener('ended',function(){
+  if(loopOn&&A!=null){a.currentTime=A;var p=a.play();if(p&&p.catch)p.catch(function(){})}
+  else playB.textContent='再生';
+});
+
+function draw(){
+  var d=a.duration,t=a.currentTime;
+  if(!dragging&&isFinite(d)&&d>0)seek.value=Math.round(t/d*1000);
+  $('cur').textContent=fmt(t);
+  if(loopOn&&A!=null&&B!=null&&B>A&&t>=B){a.currentTime=A}
+}
+function tick(){draw();requestAnimationFrame(tick)}
+requestAnimationFrame(tick);
+
+try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
+function setupMedia(name){
+  try{
+    if(!('mediaSession' in navigator))return;
+    navigator.mediaSession.metadata=new MediaMetadata({title:name||'テンポプレーヤー'});
+    navigator.mediaSession.setActionHandler('play',function(){if(a.paused)toggle()});
+    navigator.mediaSession.setActionHandler('pause',function(){a.pause()});
+    navigator.mediaSession.setActionHandler('seekbackward',function(){jump(-5)});
+    navigator.mediaSession.setActionHandler('seekforward',function(){jump(5)});
+  }catch(e){}
+}
+function toggle(){
+  if(!loaded)return;
+  if(a.paused){var p=a.play();if(p&&p.catch)p.catch(function(){say('再生を始められませんでした。もう一度押してください。')})}
+  else a.pause();
+}
+function jump(d){if(!loaded)return;a.currentTime=clamp(a.currentTime+d,0,a.duration||0)}
+
+function abShow(){
+  $('aBtn').classList.toggle('on',A!=null);
+  $('bBtn').classList.toggle('on',B!=null);
+  var el=$('abinfo');
+  if(A==null&&B==null)el.textContent='再生しながら、くり返したい場所の始めで「A」、終わりで「B」を押します。';
+  else if(B==null)el.textContent='A '+fmtd(A)+'　→　終わりの場所で「B」を押してください。';
+  else el.textContent='A '+fmtd(A)+'　〜　B '+fmtd(B)+'　くり返し中';
+}
+$('aBtn').onclick=function(){
+  A=a.currentTime;
+  if(B!=null&&B<=A){B=null;loopOn=false}
+  abShow();
+};
+$('bBtn').onclick=function(){
+  var t=a.currentTime;
+  if(A==null){A=0}
+  if(t<=A+0.3){say('B は A より後ろで押してください。');return}
+  B=t;loopOn=true;say('');abShow();
+};
+$('cBtn').onclick=function(){A=B=null;loopOn=false;abShow()};
+
+$('file').addEventListener('change',function(e){loadFile(e.target.files&&e.target.files[0])});
+playB.onclick=toggle;
+$('back').onclick=function(){jump(-5)};
+$('fwd').onclick=function(){jump(5)};
+seek.addEventListener('input',function(){dragging=true;if(loaded&&a.duration)$('cur').textContent=fmt(seek.value/1000*a.duration)});
+seek.addEventListener('change',function(){if(loaded&&a.duration)a.currentTime=seek.value/1000*a.duration;dragging=false});
+seek.addEventListener('pointerup',function(){dragging=false});
+$('rate').addEventListener('input',function(){setRate(+this.value)});
+$('orig').addEventListener('input',function(){showBpm();setRate(rate)});
+Array.prototype.forEach.call(document.querySelectorAll('[data-d]'),function(b){b.onclick=function(){setRate(rate+(+b.dataset.d))}});
+Array.prototype.forEach.call(document.querySelectorAll('#presets button'),function(b){b.onclick=function(){setRate(+b.dataset.v)}});
+
+try{var s=JSON.parse(localStorage.getItem('tempo-player-v1')||'null');if(s){if(s.orig)$('orig').value=s.orig;if(s.rate)rate=clamp(+s.rate||100,50,150)}}catch(e){}
+setRate(rate);
+window.__tp={a:a,get:function(){return{rate:rate,A:A,B:B,loopOn:loopOn}}};
+})();
+</script>
+</body>
+</html>
