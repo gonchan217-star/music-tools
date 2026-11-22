@@ -57,7 +57,7 @@ h2{font-size:15px;margin:0 0 10px;color:var(--mute);letter-spacing:.06em}
 <h1>テンポプレーヤー</h1>
 
 <div class="card">
-  <label class="pick" id="pick">音楽ファイルを選ぶ（mp3 など）<input type="file" id="file" accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac"></label>
+  <label class="pick" id="pick">音楽・動画ファイルを選ぶ（mp3・mp4 など）<input type="file" id="file"></label>
   <p id="name" class="none">まだ選んでいません</p>
   <input type="range" id="seek" min="0" max="1000" value="0" step="1" aria-label="再生位置" disabled>
   <div class="time"><span id="cur">0:00</span><span id="dur">0:00</span></div>
@@ -144,7 +144,7 @@ function loadFile(f){
   abShow();
 }
 a.addEventListener('loadedmetadata',function(){loaded=true;enable(true);$('dur').textContent=fmt(a.duration);say('');setRate(rate);draw()});
-a.addEventListener('error',function(){loaded=false;enable(false);say('この形式は再生できませんでした。mp3 / m4a / wav などを選んでください。')});
+a.addEventListener('error',function(){loaded=false;enable(false);say('この形式は再生できませんでした。mp3 / m4a / wav / mp4 などを選んでください。')});
 a.addEventListener('play',function(){playB.textContent='一時停止'});
 a.addEventListener('pause',function(){playB.textContent='再生'});
 a.addEventListener('ended',function(){

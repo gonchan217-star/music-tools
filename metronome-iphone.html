@@ -177,8 +177,8 @@ input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:16px;padding:1
 
 <section class="card" aria-label="テンポを測る">
   <h2>テンポと拍子を測る</h2>
-  <p class="hint left">曲のファイル（mp3・m4a・wavなど）を選ぶと、テンポ（BPM）と拍子を推定します。鼻歌は、ボイスメモなどで録音したファイルを選んでください。「タッ タッ タッ」と区切って歌うと当たりやすくなります。</p>
-  <label class="btn pick" id="pick">ファイルを選ぶ<input type="file" id="file" accept="audio/*"></label>
+  <p class="hint left">曲のファイル（mp3・m4a・wav、mp4などの動画も可）を選ぶと、テンポ（BPM）と拍子を推定します。鼻歌は、ボイスメモなどで録音したファイルを選んでください。「タッ タッ タッ」と区切って歌うと当たりやすくなります。</p>
+  <label class="btn pick" id="pick">ファイルを選ぶ<input type="file" id="file"></label>
   <p class="st" id="st" role="status" aria-live="polite"></p>
   <div id="res" hidden>
     <div class="big"><b id="rb">120</b><span>BPM</span></div>
@@ -436,7 +436,7 @@ function strengthLabel(s){return s>=3?'はっきり':s>=1.8?'ふつう':'あい�
 async function analyze(file){
   setBusy(true);res.hidden=true;
   try{
-    if(file.size>120*1024*1024)throw new Error('big');
+    if(file.size>400*1024*1024)throw new Error('big');
     st.textContent='読み込み中…';
     var buf=await file.arrayBuffer();
     st.textContent='音声を変換中…';
@@ -476,8 +476,8 @@ async function analyze(file){
   }catch(e){
     var m=String(e&&e.message||e);
     st.textContent=m==='short'?'音声が短すぎて測れませんでした。10秒以上のファイルを選んでください。'
-      :m==='big'?'ファイルが大きすぎます（120MBまで）。'
-      :'このファイルは読み込めませんでした。mp3、m4a、wavなどを試してください。';
+      :m==='big'?'ファイルが大きすぎます（400MBまで）。短い動画か、音声だけのファイルを選んでください。'
+      :'このファイルは読み込めませんでした。音声か動画のファイル（mp3・m4a・wav・mp4など）を選んでください。大きい動画は、音声だけにすると読み込めることがあります。';
   }
   setBusy(false);
 }
