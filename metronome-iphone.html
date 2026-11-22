@@ -110,6 +110,16 @@ input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:16px;padding:1
 .fileio .panel{margin-top:8px}
 .ext{align-self:center;color:var(--muted);font-size:15px}
 @media (prefers-reduced-motion:reduce){.d{transition:none}}
+.track{width:100%;border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:8px}
+.track input[type=range]{width:100%;accent-color:var(--accent)}
+.chk{display:flex;align-items:center;gap:10px;font-weight:600;min-height:44px}
+.chk input{width:22px;height:22px;accent-color:var(--accent);flex:none}
+.tname{margin:0;font-size:14px;color:var(--muted);overflow-wrap:anywhere}
+.trow{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px;font-variant-numeric:tabular-nums}
+.trow b{font-size:22px}
+.tmore summary{cursor:pointer;color:var(--muted);font-size:14px;min-height:36px;display:flex;align-items:center}
+.tmore label{display:flex;flex-direction:column;gap:2px;font-size:14px;margin-top:8px}
+.track.off .tbody{opacity:.45;pointer-events:none}
 </style>
 
 </head>
@@ -131,6 +141,24 @@ input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:16px;padding:1
     <label for="beats" class="hint">拍子</label>
     <select id="beats"><option>1</option><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option></select>
     <span class="hint">拍（1拍目だけ高い音）</span>
+  </div>
+  <div class="track" id="track" hidden>
+    <label class="chk"><input type="checkbox" id="tOn" checked><span>音源もいっしょに鳴らす</span></label>
+    <div class="tbody" id="tBody">
+      <p class="tname" id="tName"></p>
+      <input type="range" id="tSeek" min="0" max="1000" value="0" aria-label="音源の開始位置">
+      <div class="trow"><span id="tTime">0:00 / 0:00</span><button class="sm" type="button" id="tMark">いまの位置を開始位置に</button></div>
+      <div class="trow"><span>音源の速さ</span><b><span id="tPct">100</span>%</b></div>
+      <input type="range" id="tRate" min="50" max="150" value="100" aria-label="音源の速さ">
+      <p class="hint" id="tBpm"></p>
+      <details class="tmore"><summary>▼ 音量・ずれ調整（タップで開く）</summary>
+        <label>音源の音量<input type="range" id="tVol" min="0" max="100" value="80"></label>
+        <label>クリックの音量<input type="range" id="cVol" min="0" max="100" value="100"></label>
+        <label>クリックのずれ <span id="tOffTxt">0 ミリ秒</span><input type="range" id="tOff" min="-300" max="300" step="10" value="0"></label>
+        <p class="hint left">クリックが音源より早く聞こえるときは「＋」、遅く聞こえるときは「−」に動かします。</p>
+      </details>
+    </div>
+    <p class="hint" id="tNote"></p>
   </div>
   <button class="big-btn" id="go">スタート</button>
   <p class="hint msg" id="msg" role="status" aria-live="polite"></p>
@@ -199,24 +227,25 @@ input[type=text]{flex:1;min-width:0;font-family:inherit;font-size:16px;padding:1
 
 <script>
 /* ===== メトロノーム ===== */
-var ac=null,running=false,bpm=120,beats=4,cur=0,nextT=0,timer=null,q=[];
+var ac=null,running=false,bpm=120,beats=4,cur=0,nextT=0,timer=null,q=[],bpmF=null,clickVol=1,trk=null;
 var bpmEl=document.getElementById('bpm'),sl=document.getElementById('sl'),go=document.getElementById('go'),dots=document.getElementById('dots'),msg=document.getElementById('msg');
-function setBpm(v){v=Math.max(20,Math.min(300,Math.round(+v)||120));bpm=v;bpmEl.value=v;sl.value=v;updateNow()}
+function setBpm(v){v=Math.max(20,Math.min(300,Math.round(+v)||120));bpm=v;bpmF=null;bpmEl.value=v;sl.value=v;bpmChanged();updateNow()}
 function drawDots(){dots.innerHTML='';for(var i=0;i<beats;i++){var d=document.createElement('div');d.className='d'+(i===0?' first':'');dots.appendChild(d)}}
 function click(t,accent){
   var o=ac.createOscillator(),g=ac.createGain();
   o.frequency.value=accent?1600:1000;o.type='square';
-  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.4,t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
+  g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(Math.max(0.0002,0.4*clickVol),t+0.002);g.gain.exponentialRampToValueAtTime(0.0001,t+0.05);
   o.connect(g);g.connect(ac.destination);o.start(t);o.stop(t+0.06);
 }
 function sched(){
   while(nextT<ac.currentTime+0.15){
     click(nextT,cur===0);q.push({t:nextT,i:cur});
-    nextT+=60/bpm;cur=(cur+1)%beats;
+    nextT+=60/(bpmF||bpm);cur=(cur+1)%beats;
   }
 }
 function flash(){
   if(!running)return;
+  trackTick();
   while(q.length&&q[0].t<=ac.currentTime){
     var e=q.shift(),ds=dots.children;
     for(var k=0;k<ds.length;k++)ds[k].classList.remove('on');
@@ -250,22 +279,151 @@ function start(){
   if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();
   if(ac.resume)ac.resume();
   running=true;cur=0;q=[];nextT=ac.currentTime+0.08;
+  trackStart();
   sched();timer=setInterval(sched,25);flash();
   go.textContent='ストップ';go.classList.add('run');
 }
 function stop(){
-  running=false;clearInterval(timer);keepAudioOff();
+  running=false;clearInterval(timer);keepAudioOff();trackStop();
   for(var k=0;k<dots.children.length;k++)dots.children[k].classList.remove('on');
   go.textContent='スタート';go.classList.remove('run');
 }
 go.onclick=function(){running?stop():start()};
 bpmEl.onchange=function(){setBpm(bpmEl.value)};
-bpmEl.oninput=function(){var v=+bpmEl.value;if(v>=20&&v<=300){bpm=v;updateNow()}};
+bpmEl.oninput=function(){var v=+bpmEl.value;if(v>=20&&v<=300){bpm=v;bpmF=null;bpmChanged();updateNow()}};
 sl.oninput=function(){setBpm(sl.value)};
 document.getElementById('m').onclick=function(){setBpm(bpm-1)};
 document.getElementById('p').onclick=function(){setBpm(bpm+1)};
 document.getElementById('beats').onchange=function(e){beats=+e.target.value;cur=0;drawDots();updateNow()};
 drawDots();
+
+/* ===== 音源といっしょに鳴らす ===== */
+var tAudio=null,tNode=null,tGain=null,tStart=0,tOffMs=0,tVol=0.8,tRateV=1,tDrag=false,tTimer=null,KEY_T='metro-track-v1';
+function $t(id){return document.getElementById(id)}
+var trackEl=$t('track'),tOn=$t('tOn'),tSeek=$t('tSeek'),tNote=$t('tNote');
+function tFmt(t){if(!isFinite(t)||t<0)t=0;var m=Math.floor(t/60),s=Math.floor(t%60);return m+':'+(s<10?'0':'')+s}
+function tClamp(v,a,b){return Math.min(b,Math.max(a,v))}
+function trackActive(){return !!(trk&&tOn.checked)}
+function tDur(){return tAudio&&isFinite(tAudio.duration)?tAudio.duration:0}
+function tShowTime(t){$t('tTime').textContent=tFmt(t)+' / '+tFmt(tDur())}
+function tSave(){try{localStorage.setItem(KEY_T,JSON.stringify({v:tVol,c:clickVol,o:tOffMs}))}catch(e){}}
+function tLoad(){
+  try{
+    var o=JSON.parse(localStorage.getItem(KEY_T)||'null');
+    if(o){
+      if(typeof o.v==='number')tVol=tClamp(o.v,0,1);
+      if(typeof o.c==='number')clickVol=tClamp(o.c,0,1);
+      if(typeof o.o==='number')tOffMs=tClamp(Math.round(o.o),-300,300);
+    }
+  }catch(e){}
+  $t('tVol').value=Math.round(tVol*100);$t('cVol').value=Math.round(clickVol*100);
+  $t('tOff').value=tOffMs;$t('tOffTxt').textContent=tOffMs+' ミリ秒';
+}
+function applyRate(r){
+  tRateV=tClamp(r,0.5,1.5);
+  if(tAudio){
+    try{tAudio.defaultPlaybackRate=tRateV}catch(e){}
+    try{tAudio.playbackRate=tRateV}catch(e){}
+    try{tAudio.preservesPitch=true}catch(e){}try{tAudio.webkitPreservesPitch=true}catch(e){}
+  }
+  $t('tRate').value=Math.round(tRateV*100);$t('tPct').textContent=Math.round(tRateV*100);
+  if(trk)$t('tBpm').textContent='元のテンポ '+(Math.round(trk.base*10)/10)+' BPM → 今 '+(Math.round(trk.base*tRateV*10)/10)+' BPM';
+}
+function bpmChanged(){
+  if(!trk||inRate)return;
+  var r=bpm/trk.base;
+  tNote.textContent=(r<0.5||r>1.5)?'音源の速さは50〜150％の範囲です。この外ではメトロノームだけが変わります。':'';
+  applyRate(r);
+}
+var inRate=false;
+function attachTrack(base){
+  if(typeof foundFile==='undefined'||!foundFile||!(base>0))return;
+  var fresh=!trk||trk.file!==foundFile;
+  if(running)stop();
+  if(fresh){
+    if(trk&&trk.url){try{URL.revokeObjectURL(trk.url)}catch(e){}}
+    if(!tAudio){
+      tAudio=new Audio();tAudio.preload='auto';tAudio.setAttribute('playsinline','');
+      tAudio.addEventListener('loadedmetadata',function(){tShowTime(tStart)});
+      tAudio.addEventListener('error',function(){tNote.textContent='この音源は再生できませんでした。メトロノームだけ使えます。'});
+      tAudio.addEventListener('ended',function(){if(running)stop()});
+    }
+    var url=URL.createObjectURL(foundFile);
+    tAudio.src=url;try{tAudio.load()}catch(e){}
+    trk={file:foundFile,url:url,name:foundName,base:base};
+    tStart=0;tSeek.value=0;tNote.textContent='';
+  }else{trk.base=base;trk.name=foundName}
+  bpmF=null;applyRate(1);
+  $t('tName').textContent=trk.name;trackEl.hidden=false;tOn.disabled=false;
+  trackToggleUi();tShowTime(tStart);
+}
+function clearTrack(){
+  if(!trk)return;
+  if(running)stop();
+  try{tAudio.pause()}catch(e){}
+  try{URL.revokeObjectURL(trk.url)}catch(e){}
+  trk=null;bpmF=null;trackEl.hidden=true;tNote.textContent='';
+}
+function trackToggleUi(){trackEl.classList.toggle('off',!tOn.checked)}
+function ensureNodes(){
+  if(tNode||!tAudio)return;
+  try{
+    tNode=ac.createMediaElementSource(tAudio);tGain=ac.createGain();tGain.gain.value=tVol;
+    tNode.connect(tGain);tGain.connect(ac.destination);
+  }catch(e){tNode=null;tGain=null;try{tAudio.volume=tVol}catch(_){}}
+}
+function playT(){
+  try{var p=tAudio.play();if(p&&p.catch)p.catch(function(){tNote.textContent='音源を再生できませんでした。もう一度スタートを押してください。'})}catch(e){}
+}
+function trackStart(){
+  tOn.disabled=true;
+  if(!trackActive())return;
+  ensureNodes();
+  var d=tDur();if(d&&tStart>=d-0.5)tStart=0;
+  try{tAudio.currentTime=tStart}catch(e){}
+  applyRate(tRateV);tNote.textContent='';
+  var off=tOffMs/1000;
+  nextT=ac.currentTime+0.1+Math.max(0,off);
+  clearTimeout(tTimer);
+  if(off<0)tTimer=setTimeout(playT,-off*1000);else playT();
+}
+function trackStop(){
+  tOn.disabled=false;clearTimeout(tTimer);
+  if(tAudio){try{tAudio.pause()}catch(e){}}
+  if(trk){var d=tDur();tSeek.value=d?Math.round(tStart/d*1000):0;tShowTime(tStart)}
+}
+function trackTick(){
+  if(!trackActive()||tDrag||!tAudio)return;
+  var d=tDur(),t=tAudio.currentTime;
+  if(d)tSeek.value=Math.round(t/d*1000);
+  tShowTime(t);
+}
+tOn.onchange=function(){trackToggleUi()};
+tSeek.addEventListener('input',function(){tDrag=true;var d=tDur();if(d)tShowTime(tSeek.value/1000*d)});
+tSeek.addEventListener('change',function(){
+  tDrag=false;var d=tDur();if(!d||!trk)return;
+  var t=tSeek.value/1000*d;
+  if(running&&trackActive()){
+    try{tAudio.currentTime=t}catch(e){}
+    cur=0;q=[];nextT=ac.currentTime+0.08+Math.max(0,tOffMs/1000);
+  }else{tStart=t;tShowTime(t)}
+});
+$t('tMark').onclick=function(){
+  if(!trk)return;var d=tDur();
+  tStart=running&&trackActive()&&tAudio?tAudio.currentTime:(d?tSeek.value/1000*d:0);
+  tNote.textContent='開始位置を '+tFmt(tStart)+' にしました。';
+};
+$t('tRate').oninput=function(){
+  if(!trk)return;
+  var r=(+this.value)/100,f=trk.base*r;
+  inRate=true;setBpm(f);inRate=false;
+  bpmF=(f>=20&&f<=300&&Math.abs(f-bpm)>0.001)?f:null;
+  applyRate(r);tNote.textContent='';
+};
+$t('tVol').oninput=function(){tVol=(+this.value)/100;if(tGain)tGain.gain.value=tVol;else if(tAudio){try{tAudio.volume=tVol}catch(e){}}tSave()};
+$t('cVol').oninput=function(){clickVol=(+this.value)/100;tSave()};
+$t('tOff').oninput=function(){tOffMs=+this.value;$t('tOffTxt').textContent=tOffMs+' ミリ秒';tSave()};
+tLoad();
 
 /* ===== テンポ推定（端末内で計算） ===== */
 /*PURE-START*/
@@ -403,14 +561,14 @@ function pickMeter(a){
 var fileEl=document.getElementById('file'),pick=document.getElementById('pick'),st=document.getElementById('st'),res=document.getElementById('res');
 var rb=document.getElementById('rb'),rd=document.getElementById('rd'),useBtn=document.getElementById('use'),altsEl=document.getElementById('alts');
 var mb=document.getElementById('mb'),md=document.getElementById('md'),mwrap=document.getElementById('mwrap'),maltsEl=document.getElementById('malts'),beatsEl=document.getElementById('beats');
-var found=0,foundBeats=0,foundName='',busy=false;
+var found=0,foundBeats=0,foundName='',foundFile=null,busy=false;
 var srcEl=document.getElementById('src'),tempoSrc=null;
 /* ファイルからテンポを設定したとき、そのファイル名をテンポの上に出す */
 function markSrc(name){tempoSrc={name:name,bpm:bpm,beats:beats};updateNow()}
 
 function applyBpm(v){
-  setBpm(v);markSrc(foundName);
-  msg.textContent='メトロノームを '+bpm+' BPM に設定しました';
+  setBpm(v);markSrc(foundName);attachTrack(v);
+  msg.textContent='メトロノームを '+bpm+' BPM に設定しました'+(trk?'。音源もいっしょに鳴らせます。':'');
   try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
 }
 function setBeats(m){beats=m;beatsEl.value=String(m);cur=0;drawDots();updateNow()}
@@ -418,27 +576,46 @@ function toTop(){try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}}
 function applyAll(){
   setBpm(found);
   if(foundBeats)setBeats(foundBeats);
-  markSrc(foundName);
-  msg.textContent='メトロノームを '+bpm+' BPM'+(foundBeats?'・'+foundBeats+'拍子':'')+' に設定しました';
+  markSrc(foundName);attachTrack(found);
+  msg.textContent='メトロノームを '+bpm+' BPM'+(foundBeats?'・'+foundBeats+'拍子':'')+' に設定しました'+(trk?'。音源もいっしょに鳴らせます。':'');
   toTop();
 }
 function meterLabel(s){return s>=0.5?'はっきり':s>=0.2?'ふつう':'あいまい'}
+var DECODE_TIMEOUT_MS=60000;
+function decodeWith(c,b){return new Promise(function(ok,ng){var p=c.decodeAudioData(b,ok,ng);if(p&&p.then)p.then(ok,ng)})}
+/* 変換専用のOfflineAudioContextを使う（iPhoneでは、通常のAudioContextは操作するまで止まっていて、変換が終わらないことがあるため） */
 function decodeFile(buf){
-  var AC=window.AudioContext||window.webkitAudioContext,c=new AC();
+  var OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext,AC=window.AudioContext||window.webkitAudioContext;
+  var copy=buf.byteLength<60*1024*1024?buf.slice(0):null;
+  function viaLive(b){
+    var c=new AC();try{if(c.resume)c.resume()}catch(e){}
+    return decodeWith(c,b).then(function(a){if(c.close)c.close();return a},function(e){if(c.close)c.close();throw e});
+  }
+  function run(){
+    var c=null;
+    if(OAC){try{c=new OAC(1,1,44100)}catch(e){c=null}}
+    if(!c)return viaLive(buf);
+    return decodeWith(c,buf).catch(function(e){if(copy&&AC)return viaLive(copy);throw e});
+  }
   return new Promise(function(ok,ng){
-    var p=c.decodeAudioData(buf,ok,ng);
-    if(p&&p.then)p.then(ok,ng);
-  }).then(function(a){if(c.close)c.close();return a},function(e){if(c.close)c.close();throw e});
+    var done=false,tm=setTimeout(function(){if(!done){done=true;ng(new Error('timeout'))}},DECODE_TIMEOUT_MS);
+    run().then(function(a){if(!done){done=true;clearTimeout(tm);ok(a)}},function(e){if(!done){done=true;clearTimeout(tm);ng(e)}});
+  });
+}
+function readBuf(file){
+  if(file.arrayBuffer)return file.arrayBuffer();
+  return new Promise(function(ok,ng){var r=new FileReader();r.onload=function(){ok(r.result)};r.onerror=function(){ng(r.error||new Error('read'))};r.readAsArrayBuffer(file)});
 }
 function fmtSec(s){var m=Math.floor(s/60),r=Math.round(s%60);return m>0?m+'分'+r+'秒':r+'秒'}
 function strengthLabel(s){return s>=3?'はっきり':s>=1.8?'ふつう':'あいまい'}
 
 async function analyze(file){
+  if(busy)return;
   setBusy(true);res.hidden=true;
   try{
     if(file.size>400*1024*1024)throw new Error('big');
     st.textContent='読み込み中…';
-    var buf=await file.arrayBuffer();
+    var buf=await readBuf(file);
     st.textContent='音声を変換中…';
     var a=await decodeFile(buf);
     var sr=a.sampleRate,total=a.length,maxLen=Math.floor(90*sr),segLen=Math.min(total,maxLen),start=Math.floor((total-segLen)/2);
@@ -450,7 +627,7 @@ async function analyze(file){
     var de=detrend(oe.env,hopS);
     var r=estimate(de,hopS);
     var mt=pickMeter(beatSeq(de,detrend(oe.acc,hopS),r.bpm,hopS));
-    found=r.bpm;foundName=file.name||'';
+    found=r.bpm;foundName=file.name||'';foundFile=file;
     rb.textContent=Math.round(r.bpm);
     var dur=a.duration;
     rd.textContent='正確には約'+r.bpm.toFixed(1)+' BPM ／ 拍のはっきり度：'+strengthLabel(r.strength)+'（'+(total>segLen?'曲の中央付近の約90秒':'全体の'+fmtSec(dur))+'を分析）';
@@ -474,15 +651,21 @@ async function analyze(file){
     mwrap.hidden=!mt;
     res.hidden=false;st.textContent='';
   }catch(e){
-    var m=String(e&&e.message||e);
+    var m=String(e&&e.message||e),nm=String(e&&e.name||''),det='（詳細：'+(nm?nm+' ':'')+m.slice(0,80)+'）';
     st.textContent=m==='short'?'音声が短すぎて測れませんでした。10秒以上のファイルを選んでください。'
       :m==='big'?'ファイルが大きすぎます（400MBまで）。短い動画か、音声だけのファイルを選んでください。'
-      :'このファイルは読み込めませんでした。音声か動画のファイル（mp3・m4a・wav・mp4など）を選んでください。大きい動画は、音声だけにすると読み込めることがあります。';
+      :m==='timeout'?'変換が終わりませんでした。mp3ではなく、m4aやwavにして試してみてください。'+det
+      :(nm==='NotReadableError'||nm==='NotFoundError'||nm==='SecurityError')?'ファイルを読み込めませんでした。iCloudなどにあるファイルは、先に「ファイル」アプリでiPhoneにダウンロードしてから、選び直してください。'+det
+      :'このファイルは読み込めませんでした。音声か動画のファイル（mp3・m4a・wav・mp4など）を選んでください。大きい動画は、音声だけにすると読み込めることがあります。'+det;
   }
   setBusy(false);
 }
-function setBusy(b){busy=b;fileEl.disabled=b;pick.classList.toggle('off',b)}
-fileEl.onchange=function(){var f=fileEl.files&&fileEl.files[0];if(f)analyze(f);fileEl.value=''};
+var file2=document.getElementById('file2'),pick2=document.getElementById('pick2');
+function setBusy(b){busy=b;pick.classList.toggle('off',b);if(file2)pick2.classList.toggle('off',b)}
+/* 選び直せるように、値は「次に押したとき」に空にする（選んだ直後に空にすると、iPhoneでは読めなくなることがあるため） */
+fileEl.addEventListener('click',function(){try{fileEl.value=''}catch(e){}});
+fileEl.onchange=function(){var f=fileEl.files&&fileEl.files[0];if(f)analyze(f)};
+if(file2){file2.addEventListener('click',function(){try{file2.value=''}catch(e){}});file2.onchange=function(){var f=file2.files&&file2.files[0];if(f)analyze(f)}}
 useBtn.onclick=applyAll;
 
 /* ===== 曲リスト（フォルダ＝コンサートごと、曲＝名前つきの設定） ===== */
@@ -655,7 +838,7 @@ function updateNow(){
   if(s.bpm!==bpm||s.beats!==beats){nowEl.appendChild(document.createTextNode(' '));nowEl.appendChild(el('small',null,'（保存した設定から変更中）'))}
 }
 function loadSong(s){
-  ui.song=s.id;tempoSrc=null;setBpm(s.bpm);setBeats(s.beats);
+  ui.song=s.id;tempoSrc=null;clearTrack();setBpm(s.bpm);setBeats(s.beats);
   msg.textContent='「'+s.name+'」を呼び出しました（'+s.bpm+' BPM・'+s.beats+'拍子）';
   updateNow();renderSongs();
 }
